@@ -1,0 +1,135 @@
+#!/bin/bash
+#
+# Name:      hlscat
+# Date:      2023-08-29
+# Author:    Jakub Pisarek @sgfn
+# License:   MIT License
+
+DEFAULT_INPUT_DIR="./jellyfish_output/hls_output"
+SCRIPT_NAME=$(basename "${BASH_SOURCE[0]}")
+
+usage() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [-vhc] [-i <dir>] [-o <file>] [-r [from]:[to]] [dirname prefix]
+
+EOF
+  print_cat
+  cat <<EOF
+hlscat -- Concatenate HLS headers and segments into an MP4 file
+
+If dirname prefix is provided, it will be used to match a directory with HLS segments
+inside of the parent directory passed using the -i option.
+Only the first match will be processed, subsequent ones are ignored.
+
+For instance, "${SCRIPT_NAME} af342d" will work on files in "${DEFAULT_INPUT_DIR}/af342d*",
+if such a directory is present.
+
+Available options:
+
+  -i <directory>   Parent of directories with HLS segments.
+                   Defaults to "${DEFAULT_INPUT_DIR}/"
+  -o <file>        Output filename. Defaults to "hlscat_<datetime>.mp4"
+  -r [from]:[to]   Range of numbers of segments to concatenate (both ends inclusive).
+                   Numbers can be omitted to signal the respective end of the range.
+                   Defaults to all segments in directory, same as passing "-r :"
+  -v               Enable verbose mode
+  -h               Print this help and exit
+  -c               Print the cat and exit
+EOF
+  exit 0
+}
+
+print_cat() {
+  cat <<'EOF'
+   __ ____   ____
+  / // / /  / __/    _ |\_
+ / _  / /___\ \      \` ..\
+/_//_/____/___/ __,.-" =__Y=
+              ."        )
+        _    /   ,    \/\_
+       ((____|    )_-\ \_-`
+       `-----'`-----` `--`
+EOF
+}
+
+exit_error() {
+  echo "$1" >&2
+  exit "${2-1}"
+}
+
+parse_params() {
+  INPUT_DIR="${DEFAULT_INPUT_DIR}"
+  OUTPUT_FILE="hlscat_$(date '+%Y%m%d%H%M%S').mp4"
+  RANGE=":"
+
+  while :; do
+    case "${1-}" in
+    -h) usage ;;
+    -v) set -x ;;
+    -c) print_cat; exit 0 ;;
+    -i)
+      INPUT_DIR="${2-}"
+      shift
+      ;;
+    -o)
+      OUTPUT_FILE="${2-}"
+      shift
+      ;;
+    -r)
+      RANGE="${2-}"
+      shift
+      ;;
+    --) break ;;
+    -?*) exit_error "Unknown option: $1" 2 ;;
+    *) break ;;
+    esac
+    shift
+  done
+
+  [[ -z "${INPUT_DIR}" ]] && exit_error "Option -i requires a parameter: dir" 2
+  [[ -z "${OUTPUT_FILE}" ]] && exit_error "Option -o requires a parameter: file" 2
+  [[ -z "${RANGE}" ]] && exit_error "Option -r requires a parameter: [from]:[to]" 2
+
+  DIRNAME_PREFIX="${1-}"
+
+  return 0
+}
+
+main() {
+  parse_params "$@"
+
+  [[ ! -d "${INPUT_DIR}" ]] && exit_error "No such directory: ${INPUT_DIR}"
+  FILES_PATH=$(find "${INPUT_DIR}" -maxdepth 1 -mindepth 1 -type d -name "${DIRNAME_PREFIX}*" | head -1)
+  [[ -z "${FILES_PATH}" ]] && exit_error "No directory matching ${DIRNAME_PREFIX}* found in ${INPUT_DIR}"
+
+  ORIGIN_PATH=$(pwd)
+  cd "${FILES_PATH}" || exit_error "Unable to open directory ${FILES_PATH}"
+  trap 'cd "${ORIGIN_PATH}"' EXIT
+
+  SEGMENT_NUMBERS=$(find . -name 'muxed_segment_*.m4s' | sed -E 's/^.*muxed_segment_([0-9]+)_.*\.m4s$/\1/' | sort -n)
+  [[ -z "${SEGMENT_NUMBERS}" ]] && exit_error "No HLS segments found in ${FILES_PATH}"
+  # TODO: less unix runes and subshells, maybe?
+  MIN_SEGMENT=$(echo "${RANGE}" | sed -n -E 's/^([0-9]+):.*$/\1/p')
+  MAX_SEGMENT=$(echo "${RANGE}" | sed -n -E 's/^.*:([0-9]+)$/\1/p')
+  [[ -z "${MIN_SEGMENT}" ]] && MIN_SEGMENT=$(echo "${SEGMENT_NUMBERS}" | head -1)
+  [[ -z "${MAX_SEGMENT}" ]] && MAX_SEGMENT=$(echo "${SEGMENT_NUMBERS}" | tail -1)
+
+  cmd="cat"
+  # TODO: This probably won't work if the header is split into multiple files
+  for file in ./muxed_header_*.mp4; do
+    # TODO: This is probably extremely unsafe, e.g. imagine a file called '; :(){ :|:& };:;'
+    #       It wouldn't match, but I have a feeling like this isn't the correct way to do this.
+    cmd+=" ${file}"
+  done
+
+  for i in $(seq "${MIN_SEGMENT}" "${MAX_SEGMENT}"); do
+    # TODO: This is ugly, rewrite
+    for file in ./muxed_segment_"${i}"_*.m4s; do
+      cmd+=" ${file}"
+    done
+  done
+
+  ${cmd} > "${ORIGIN_PATH}/${OUTPUT_FILE}"
+}
+
+main "$@"
