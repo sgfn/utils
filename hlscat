@@ -11,18 +11,17 @@ SCRIPT_NAME=$(basename "${BASH_SOURCE[0]}")
 usage() {
   cat <<EOF
 Usage: ${SCRIPT_NAME} [-vhc] [-i <dir>] [-o <file>] [-r [from]:[to]] [dirname prefix]
-
 EOF
   print_cat
   cat <<EOF
 hlscat -- Concatenate HLS headers and segments into an MP4 file
 
 If dirname prefix is provided, it will be used to match a directory with HLS segments
-inside of the parent directory passed using the -i option.
+inside of the parent directory passed using the \`-i\` option.
 Only the first match will be processed, subsequent ones are ignored.
 
-For instance, "${SCRIPT_NAME} af342d" will work on files in "${DEFAULT_INPUT_DIR}/af342d*",
-if such a directory is present.
+For instance, \`${SCRIPT_NAME} af342d\` will work on files in ${DEFAULT_INPUT_DIR}/af342d*
+(if such a directory is present).
 
 Available options:
 
@@ -31,7 +30,7 @@ Available options:
   -o <file>        Output filename. Defaults to "hlscat_<datetime>.mp4"
   -r [from]:[to]   Range of numbers of segments to concatenate (both ends inclusive).
                    Numbers can be omitted to signal the respective end of the range.
-                   Defaults to all segments in directory, same as passing "-r :"
+                   Defaults to all segments in directory, same as passing \`-r :\`
   -v               Enable verbose mode
   -h               Print this help and exit
   -c               Print the cat and exit
@@ -86,8 +85,8 @@ parse_params() {
     shift
   done
 
-  [[ -z "${INPUT_DIR}" ]] && exit_error "Option -i requires a parameter: dir" 2
-  [[ -z "${OUTPUT_FILE}" ]] && exit_error "Option -o requires a parameter: file" 2
+  [[ -z "${INPUT_DIR}" ]] && exit_error "Option -i requires a parameter: <dir>" 2
+  [[ -z "${OUTPUT_FILE}" ]] && exit_error "Option -o requires a parameter: <file>" 2
   [[ -z "${RANGE}" ]] && exit_error "Option -r requires a parameter: [from]:[to]" 2
 
   DIRNAME_PREFIX="${1-}"
@@ -115,21 +114,25 @@ main() {
   [[ -z "${MAX_SEGMENT}" ]] && MAX_SEGMENT=$(echo "${SEGMENT_NUMBERS}" | tail -1)
 
   cmd="cat"
-  # TODO: This probably won't work if the header is split into multiple files
+  # TODO: This probably won't work if the header is split into multiple files,
+  #       is ugly, could be unsafe and needs to be changed
   for file in ./muxed_header_*.mp4; do
-    # TODO: This is probably extremely unsafe, e.g. imagine a file called '; :(){ :|:& };:;'
-    #       It wouldn't match, but I have a feeling like this isn't the correct way to do this.
     cmd+=" ${file}"
   done
 
   for i in $(seq "${MIN_SEGMENT}" "${MAX_SEGMENT}"); do
-    # TODO: This is ugly, rewrite
     for file in ./muxed_segment_"${i}"_*.m4s; do
       cmd+=" ${file}"
     done
   done
 
-  ${cmd} > "${ORIGIN_PATH}/${OUTPUT_FILE}"
+  OUTPUT_PATH="${ORIGIN_PATH}/${OUTPUT_FILE}"
+
+  ${cmd} > "${OUTPUT_PATH}"
+  if [[ $? != 0 ]]; then
+    rm "${OUTPUT_PATH}"
+    exit_error "hlscat failed!"
+  fi
 }
 
 main "$@"
