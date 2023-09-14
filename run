@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+#
+# Name:      run
+# Date:      2023-09-14
+# Author:    Jakub Pisarek @sgfn
+# License:   MIT License
+
+from typing import NoReturn
+import os
+import sys
+import pickle
+
+def usage() -> NoReturn:
+    print(
+f'''Usage: {sys.argv[0]} [CMD]
+
+run -- Store and execute a single most used command in any directory
+
+Available CMDs:
+
+  run             Default CMD. Execute command stored for the current directory
+  set <command>   Set the command for the current directory
+  unset           Remove the command for the current directory
+  list            Print the command stored for the current directory
+  list-all        Print all stored commands
+  help            Print this help and exit'''
+    )
+    sys.exit(0)
+
+def exit_error(msg: str, rc: int = 2) -> NoReturn:
+    print(msg, file=sys.stderr)
+    sys.exit(rc)
+
+
+class Config:
+    def __init__(self) -> None:
+        self._config_path = os.path.expanduser('~/.config/utils/run_cfg.bin')
+        self._config = {}
+
+        try:
+            with open(self._config_path, 'rb') as f:
+                self._config = pickle.load(f)
+        except FileNotFoundError:
+            print(f'File {self._config_path} does not exist. Creating')
+            os.mkdir(os.path.dirname(self._config_path))
+            self.write()
+
+    def write(self) -> None:
+        with open(self._config_path, 'wb') as f:
+            pickle.dump(self._config, f)
+
+    def get(self, path: str) -> list[str]:
+        if path in self._config:
+            return self._config[path]
+        else:
+            exit_error(f'No entry for path {path}')
+
+    def set(self, path: str, cmd: list[str]) -> None:
+        self._config[path] = cmd
+        self.write()
+
+    def unset(self, path: str) -> None:
+        self._config.pop(path, None)
+        self.write()
+
+    def list(self) -> None:
+        print('Path                              Command\n')
+        for path, cmd in self._config.items():
+            print(f'{path:30}    {" ".join(cmd)}')
+
+
+def main():
+    path = os.getcwd()
+
+    cmd = sys.argv[1] if len(sys.argv) > 1 else 'run'
+    match cmd:
+        case 'help':
+            usage()
+
+        case 'run':
+            c = Config()
+            stored_cmd = c.get(path)
+            os.execlp(stored_cmd[0], *stored_cmd)
+
+        case 'set':
+            c = Config()
+            if len(sys.argv) > 2:
+                c.set(path, sys.argv[2:])
+            else:
+                exit_error('No command to save specified')
+
+        case 'unset':
+            c = Config()
+            c.unset(path)
+
+        case 'list':
+            c = Config()
+            stored_cmd = c.get(path)
+            print(' '.join(stored_cmd))
+
+        case 'list-all':
+            c = Config()
+            c.list()
+
+        case _:
+            exit_error(f'Unknown CMD: {cmd}')
+
+
+if __name__ == '__main__':
+    main()
