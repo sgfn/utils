@@ -5,12 +5,13 @@
 # Author:    Jakub Pisarek @sgfn
 # License:   MIT License
 
+DEFAULT_HLS_PREFIX="muxed"
 DEFAULT_INPUT_DIR="./jellyfish_output/hls_output"
 SCRIPT_NAME=$(basename "${BASH_SOURCE[0]}")
 
 usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [-vhc] [-i <dir>] [-o <file>] [-r [from]:[to]] [dirname prefix]
+Usage: ${SCRIPT_NAME} [-vhc] [-p <prefix>] [-i <dir>] [-o <file>] [-r [from]:[to]] [dirname prefix]
 EOF
   print_cat
   cat <<EOF
@@ -25,6 +26,7 @@ For instance, \`${SCRIPT_NAME} af342d\` will work on files in ${DEFAULT_INPUT_DI
 
 Available options:
 
+  -p <prefix>      HLS file prefix. Defaults to "${DEFAULT_HLS_PREFIX}"
   -i <directory>   Parent of directories with HLS segments.
                    Defaults to "${DEFAULT_INPUT_DIR}/"
   -o <file>        Output filename. Defaults to "hlscat_<datetime>.mp4"
@@ -57,6 +59,7 @@ exit_error() {
 }
 
 parse_params() {
+  HLS_PREFIX="${DEFAULT_HLS_PREFIX}"
   INPUT_DIR="${DEFAULT_INPUT_DIR}"
   OUTPUT_FILE="hlscat_$(date '+%Y%m%d%H%M%S').mp4"
   RANGE=":"
@@ -66,6 +69,10 @@ parse_params() {
     -h) usage ;;
     -v) set -x ;;
     -c) print_cat; exit 0 ;;
+    -p)
+      HLS_PREFIX="${2-}"
+      shift
+      ;;
     -i)
       INPUT_DIR="${2-}"
       shift
@@ -85,6 +92,7 @@ parse_params() {
     shift
   done
 
+  [[ -z "${HLS_PREFIX}" ]] && exit_error "Option -p requires a parameter: <prefix>" 2
   [[ -z "${INPUT_DIR}" ]] && exit_error "Option -i requires a parameter: <dir>" 2
   [[ -z "${OUTPUT_FILE}" ]] && exit_error "Option -o requires a parameter: <file>" 2
   [[ -z "${RANGE}" ]] && exit_error "Option -r requires a parameter: [from]:[to]" 2
@@ -98,15 +106,16 @@ main() {
   parse_params "$@"
 
   [[ ! -d "${INPUT_DIR}" ]] && exit_error "No such directory: ${INPUT_DIR}"
-  FILES_PATH=$(find "${INPUT_DIR}" -maxdepth 1 -mindepth 1 -type d -name "${DIRNAME_PREFIX}*" | head -1)
+  # pick longest dirname that matches
+  FILES_PATH=$(find "${INPUT_DIR}" -type d -name "${DIRNAME_PREFIX}*" | sort | tail -1)
   [[ -z "${FILES_PATH}" ]] && exit_error "No directory matching ${DIRNAME_PREFIX}* found in ${INPUT_DIR}"
 
   ORIGIN_PATH=$(pwd)
   cd "${FILES_PATH}" || exit_error "Unable to open directory ${FILES_PATH}"
   trap 'cd "${ORIGIN_PATH}"' EXIT
 
-  SEGMENT_NUMBERS=$(find . -name 'muxed_segment_*.m4s' | sed -E 's/^.*muxed_segment_([0-9]+)_.*\.m4s$/\1/' | sort -n)
-  [[ -z "${SEGMENT_NUMBERS}" ]] && exit_error "No HLS segments found in ${FILES_PATH}"
+  SEGMENT_NUMBERS=$(find . -name "${HLS_PREFIX}"'_segment_*.m4s' | sed -E 's/^.*'"${HLS_PREFIX}"'_segment_([0-9]+)_.*\.m4s$/\1/' | sort -n)
+  [[ -z "${SEGMENT_NUMBERS}" ]] && exit_error "No HLS segments prefixed '${HLS_PREFIX}_' found in ${FILES_PATH}"
   # TODO: less unix runes and subshells, maybe?
   MIN_SEGMENT=$(echo "${RANGE}" | sed -n -E 's/^([0-9]+):.*$/\1/p')
   MAX_SEGMENT=$(echo "${RANGE}" | sed -n -E 's/^.*:([0-9]+)$/\1/p')
@@ -116,12 +125,12 @@ main() {
   cmd="cat"
   # TODO: This probably won't work if the header is split into multiple files,
   #       is ugly, could be unsafe and needs to be changed
-  for file in ./muxed_header_*.mp4; do
+  for file in ./"${HLS_PREFIX}"_header_*.mp4; do
     cmd+=" ${file}"
   done
 
   for i in $(seq "${MIN_SEGMENT}" "${MAX_SEGMENT}"); do
-    for file in ./muxed_segment_"${i}"_*.m4s; do
+    for file in ./"${HLS_PREFIX}"_segment_"${i}"_*.m4s; do
       cmd+=" ${file}"
     done
   done

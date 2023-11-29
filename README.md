@@ -5,3 +5,7 @@ Small utility scripts written whenever a task proves itself repetitive/boring en
 ## hlscat
 
 Concatenate HLS headers and segments into an MP4 file. To be used with [Jellyfish](https://github.com/jellyfish-dev/jellyfish)
+
+## run
+
+Store and execute a single most used command in any directory.
