@@ -73,37 +73,37 @@ def main():
     path = os.getcwd()
 
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'run'
-    match cmd:
-        case 'help':
-            usage()
 
-        case 'run':
-            c = Config()
-            stored_cmd = c.get(path)
-            os.execlp(stored_cmd[0], *stored_cmd)
+    if cmd == 'help':
+        usage()
 
-        case 'set':
-            c = Config()
-            if len(sys.argv) > 2:
-                c.set(path, sys.argv[2:])
-            else:
-                exit_error('No command to save specified')
+    elif cmd == 'run':
+        c = Config()
+        stored_cmd = c.get(path)
+        os.execlp(stored_cmd[0], *stored_cmd)
 
-        case 'unset':
-            c = Config()
-            c.unset(path)
+    elif cmd == 'set':
+        c = Config()
+        if len(sys.argv) > 2:
+            c.set(path, sys.argv[2:])
+        else:
+            exit_error('No command to save specified')
 
-        case 'list':
-            c = Config()
-            stored_cmd = c.get(path)
-            print(' '.join(stored_cmd))
+    elif cmd == 'unset':
+        c = Config()
+        c.unset(path)
 
-        case 'list-all':
-            c = Config()
-            c.list()
+    elif cmd == 'list':
+        c = Config()
+        stored_cmd = c.get(path)
+        print(' '.join(stored_cmd))
 
-        case _:
-            exit_error(f'Unknown CMD: {cmd}')
+    elif cmd == 'list-all':
+        c = Config()
+        c.list()
+
+    else:
+        exit_error(f'Unknown CMD: {cmd}')
 
 
 if __name__ == '__main__':
