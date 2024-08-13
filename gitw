@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+#
+# Name:      gitw
+# Date:      2024-08-13
+# Author:    Jakub Pisarek @sgfn
+# License:   MIT License
+
+import os
+from random import randint
+import sys
+
+COMMANDS = {
+    'f': ('==v', 'fetch'),
+    'p': ('==>', 'pull'),
+    'pp': ('<==', 'push'),
+    'ppu': ('*<=', 'push -u origin {BRANCH}'),
+    'ppf': ('<<=', 'push --force'),
+    'co': ('<^>', 'checkout'),
+    'com': ('{^}', 'checkout master'),
+    'cob': ('<*>', 'checkout -b {BRANCH}'),
+    'cof': ('<~>', 'checkout -- .'),
+    'a': (':+:', 'add'),
+    'aa': (':~:', 'add .'),
+    'cm': ('::.', 'commit -m {MSG}'),
+    'cma': ('::…', 'commit --amend'),
+    'cmf': ('::+', 'commit --amend --no-edit'),
+    't': ('<#>', 'tag'),
+    'r': ('~~-', 'reset --soft'),
+    'rf': ('~~_', 'reset --hard'),
+    's': ('[?]', 'status'),
+    'd': ('±…>', 'diff'),
+    'dh': ('±^>', 'diff HEAD'),
+    'l': ('[…]', 'log'),
+    'lg': ('[.]', 'log --all --decorate --oneline --graph'),
+    'bl': ('…!?', 'blame'),
+    'b': ('<…>', 'branch'),
+    'br': ('<@>', 'branch --remote'),
+    'bd': ('<->', 'branch -D {BRANCH}'),
+    '{CMD}': ('>??', '{CMD}')
+}
+
+DANGEROUS_COMMANDS = {'ppf', 'cof', 'rf'}
+
+
+def git(*args):
+    os.execlp('git', 'git', *args)
+
+
+def printc(s, end='\n', danger=False, file=sys.stderr):
+    if danger:
+        print('\x1b[48;5;52m\x1b[1m', end='', file=file)
+    else:
+        print('\x1b[48;5;27m', end='', file=file)
+    print(s, '\x1b[0m', sep='', end=end, file=file)
+
+
+def assert_nonempty(l):
+    if len(l) == 0:
+        printc('...arg?', danger=True)
+        sys.exit(2)
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) >= 2 else 's'
+    rest = sys.argv[2:]
+
+    if cmd in ['h', '?', 'help']:
+        print('gitw -- git wrapper\n\navailable commands:')
+        for cmd, (symbol, full_cmd) in COMMANDS.items():
+            printc(symbol, end=' ', danger=(cmd in DANGEROUS_COMMANDS), file=sys.stdout)
+            print(f'{cmd:5s} {full_cmd}')
+        sys.exit(0)
+
+    symbol, full_cmd = COMMANDS.get(cmd, COMMANDS['{CMD}'])
+    printc(symbol, danger=(cmd in DANGEROUS_COMMANDS))
+
+    if cmd in DANGEROUS_COMMANDS:
+        challenge = str(randint(100, 999))
+        printc(f'Enter `{challenge}` to confirm the execution of `git {full_cmd}`', danger=True)
+        response = input()
+        if challenge != response:
+            printc('Abort.', danger=True)
+            sys.exit(2)
+
+    # Push-pull
+    if cmd == 'f':
+        git('fetch', *rest)
+
+    elif cmd == 'p':
+        git('pull', *rest)
+
+    elif cmd == 'pp':
+        git('push', *rest)
+
+    elif cmd == 'ppu':
+        assert_nonempty(rest)
+        git('push', '-u', 'origin', *rest)
+
+    elif cmd == 'ppf':
+        git('push', '-f', *rest)
+
+    # Checkout
+    elif cmd == 'co':
+        assert_nonempty(rest)
+        git('checkout', *rest)
+
+    elif cmd == 'com':
+        # OR CHECKOUT MAIN...
+        git('checkout', 'master', *rest)
+
+    elif cmd == 'cob':
+        assert_nonempty(rest)
+        git('checkout', '-b', *rest)
+
+    elif cmd == 'cof':
+        git('checkout', '--', '.', *rest)
+
+    # Stage
+    elif cmd == 'a':
+        assert_nonempty(rest)
+        git('add', *rest)
+
+    elif cmd == 'aa':
+        git('add', '.', *rest)
+
+    # Commit + tag
+    elif cmd == 'cm':
+        assert_nonempty(rest)
+        git('commit', '-m', *rest)
+
+    elif cmd == 'cma':
+        git('commit', '--amend', *rest)
+
+    elif cmd == 'cmf':
+        git('commit', '--amend', '--no-edit', *rest)
+
+    elif cmd == 't':
+        git('tag', *rest)
+
+    # Reset
+    elif cmd == 'r':
+        git('reset', '--soft', *rest)
+
+    elif cmd == 'rf':
+        git('reset', '--hard', *rest)
+
+    # Current info
+    elif cmd == 's':
+        git('status', *rest)
+
+    elif cmd == 'd':
+        git('diff', *rest)
+
+    elif cmd == 'dh':
+        git('diff', 'HEAD', *rest)
+
+    # History
+    elif cmd == 'l':
+        git('log', *rest)
+
+    elif cmd == 'lg':
+        git('log', '--all', '--decorate', '--oneline', '--graph', *rest)
+
+    elif cmd == 'bl':
+        git('blame', *rest)
+
+    # Branch listing/manipulation
+    elif cmd == 'b':
+        git('branch', *rest)
+
+    elif cmd == 'br':
+        git('branch', '--remote', *rest)
+
+    elif cmd == 'bd':
+        git('branch', '-D', *rest)
+
+    # push queued tags
+
+    # stash show -P [0]
+    # reset/reclone
+    # cherry-pick saved one
+    # alias gbd="git branch | grep -v '\* ' | xargs git branch -D"
+
+    else:
+        git(cmd, *rest)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(2)
